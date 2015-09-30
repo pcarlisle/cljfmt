@@ -254,3 +254,41 @@
   (-> (p/parse-string-all form-string)
       (reformat-form options)
       (n/string)))
+
+(defn- alignable-form? [zloc]
+  (= "{" (start-element (n/tag (z/node zloc)))))
+
+(defn- max-first-column-width [form]
+  (->> form
+       z/down
+       (iterate z/right)
+       (take-while identity)
+       (filter first-form-in-line?)
+       (map z/length)
+       (apply max)))
+
+(defn- second-element-in-line? [zloc]
+  (if-let [zleft (z/left zloc)]
+    (and (element? zloc)
+         (first-form-in-line? zleft))
+    false))
+
+(defn- pad-column-to [w zloc]
+  (let [col-width (z/length (z/left zloc))
+        padding (+ 1 (- w col-width))]
+    (-> zloc
+        zip/left
+        remove-whitespace-and-newlines
+        zip/right
+        (zip/insert-left (whitespace padding)))))
+
+(defn- align-map [zloc]
+  (let [max-width (max-first-column-width zloc)]
+    (-> zloc
+        z/down
+        (edit-all second-element-in-line? (partial pad-column-to max-width))
+        z/up)))
+
+(let [form (p/parse-string-all "{:hello  :there ;; comment\n :a :what}")]
+  (println (n/string
+    (transform form edit-all alignable-form? align-map))))
